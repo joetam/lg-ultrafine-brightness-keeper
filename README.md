@@ -81,6 +81,16 @@ plist, and log. It does not alter macOS display settings or monitor firmware.
 `DisplayServices` is a private macOS framework. Apple can change it in a future
 macOS release. The helper fails closed if the expected symbols are unavailable.
 
+## Related discussions
+
+These are community reports of the same or closely related wake/brightness
+failure; they are context for the workaround, not an official diagnosis.
+
+- [Apple Support Community: wake changes brightness; a delayed up/down pulse on unlock restores it](https://discussions.apple.com/thread/254692744)
+- [MonitorControl #874: two UltraFine 5Ks wake dimmer while macOS still shows the prior brightness](https://github.com/MonitorControl/MonitorControl/discussions/874)
+- [MacRumors: 27MD5KL wakes dimmed with auto-dimming off and brightness at maximum](https://forums.macrumors.com/threads/lg-ultrafine-5k-on-mac-mini-m1-keeps-dimming.2272425/)
+- [BetterDisplay #5063: a 2026 report of 10–20% dimming at 100% after sleep](https://github.com/waydabber/BetterDisplay/discussions/5063)
+
 ## License
 
 [MIT](LICENSE)
