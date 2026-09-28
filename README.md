@@ -4,13 +4,18 @@
 the LG UltraFine wake bug: the panel wakes visibly dimmer (or brighter) even
 though macOS still shows the saved brightness value.
 
-On screen wake or unlock, the helper:
+On startup, screen wake, unlock, or display configuration changes, the helper:
 
 1. waits one second for Thunderbolt displays to settle;
 2. enumerates online displays whose macOS name is `LG UltraFine`;
 3. reads each display's saved native brightness value;
 4. nudges each panel by less than 1%; and
 5. restores the saved value 120 ms later.
+
+It repeats the repair at 3, 7, and 15 seconds to cover slow-waking panels,
+reading the current brightness afresh each time. The background process runs
+the AppKit event loop so display names and IDs stay current after reconnects.
+The LaunchAgent starts at login and restarts the helper if it exits.
 
 It uses the same private `DisplayServices` API macOS and popular display-control
 apps use for Apple-managed displays. It does not use DDC, change resolution,

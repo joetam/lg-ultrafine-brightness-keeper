@@ -120,10 +120,8 @@ private func runSelfTest() {
 
 private final class BrightnessKeeper: @unchecked Sendable {
     private let services: DisplayServices
-    private var scheduledRepair: DispatchWorkItem?
-    private var lastRepair = Date.distantPast
-    private let eventDelay: TimeInterval = 1.0
-    private let duplicateWindow: TimeInterval = 4.0
+    private var scheduledRepairs: [DispatchWorkItem] = []
+    private let repairDelays: [TimeInterval] = [1.0, 3.0, 7.0, 15.0]
     private let pulseDuration: TimeInterval = 0.12
 
     init(services: DisplayServices) {
@@ -153,6 +151,8 @@ private final class BrightnessKeeper: @unchecked Sendable {
         let targets = ultrafineTargets()
         guard !targets.isEmpty else {
             log("No online LG UltraFine displays were ready (\(reason))")
+            listDisplays()
+            fflush(stdout)
             return 0
         }
 
@@ -180,9 +180,11 @@ private final class BrightnessKeeper: @unchecked Sendable {
         }
 
         Thread.sleep(forTimeInterval: pulseDuration)
+        var restoredCount = 0
         for target in nudged {
             let result = services.set(target.id, target.brightness)
             if result == 0 {
+                restoredCount += 1
                 services.changed?(target.id, Double(target.brightness))
                 log(
                     String(
@@ -203,23 +205,21 @@ private final class BrightnessKeeper: @unchecked Sendable {
                 )
             }
         }
-        lastRepair = Date()
-        return nudged.count
+        return restoredCount
     }
 
     func scheduleRepair(reason: String) {
-        if Date().timeIntervalSince(lastRepair) < duplicateWindow {
-            log("Ignoring duplicate event (\(reason))")
-            return
+        // Coalesce wake/unlock notifications, but retain late passes for panels
+        // that appear after the first pass (including partially ready setups).
+        scheduledRepairs.forEach { $0.cancel() }
+        scheduledRepairs = repairDelays.map { delay in
+            let work = DispatchWorkItem { [weak self] in
+                self?.repairNow(reason: "\(reason), after \(delay)s")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            return work
         }
-
-        scheduledRepair?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.repairNow(reason: reason)
-        }
-        scheduledRepair = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + eventDelay, execute: work)
-        log("Scheduled repair after \(eventDelay)s (\(reason))")
+        log("Scheduled repair passes at \(repairDelays)s (\(reason))")
     }
 
     private func ultrafineTargets() -> [DisplayTarget] {
@@ -272,7 +272,7 @@ private final class BrightnessKeeper: @unchecked Sendable {
             namesByID[CGDirectDisplayID(number.uint32Value)] = screen.localizedName
         }
 
-        return ids.map { id in
+        return ids.prefix(Int(count)).map { id in
             (id, namesByID[id] ?? "Unknown display")
         }
     }
@@ -336,10 +336,21 @@ private func run() throws {
         keeper.scheduleRepair(reason: "screen unlocked")
     }
 
+    NotificationCenter.default.addObserver(
+        forName: NSApplication.didChangeScreenParametersNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        keeper.scheduleRepair(reason: "display configuration changed")
+    }
+
     FileHandle.standardError.write(
         Data("LG UltraFine Brightness Keeper is watching for wake/unlock\n".utf8)
     )
-    RunLoop.main.run()
+    keeper.scheduleRepair(reason: "startup")
+    // AppKit must process WindowServer events to invalidate its NSScreen cache.
+    // A bare RunLoop leaves names/IDs stale after displays reconnect.
+    application.run()
 }
 
 do {
